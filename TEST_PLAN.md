@@ -3,15 +3,15 @@
 ## Pre-install checks
 
 ### 1. Telemetry compatibility ✅
-- Telemetry plugin does NOT use `inbound_claim` hook
-- Telemetry uses `message_received` which fires AFTER `inbound_claim` decides
+- Telemetry plugin does NOT use the `before_dispatch` hook for audio claims
+- Telemetry uses `message_received` after `before_dispatch` handlers run
 - Our plugin only claims audio messages; all other messages pass through unaffected
 - **Risk: LOW**
 
 ### 2. Hook priority
-- `inbound_claim` is a claiming hook (first `{ handled: true }` wins)
-- No other installed plugin uses this hook
-- If Telemetry ever adds `inbound_claim`, we should set explicit priority
+- `before_dispatch` handlers can return `{ handled: true }` for a message
+- No other installed plugin uses this hook for audio claims
+- If Telemetry ever adds a `before_dispatch` audio claim, set explicit priority
 
 ### 3. Event shape (verified from OpenClaw source)
 ```
@@ -27,9 +27,9 @@ event.metadata.mediaPaths: string[]
 event.metadata.mediaTypes: string[]
 ```
 
-Result shape (verified from types):
+Result shape used by this plugin:
 ```
-{ handled: true, reply: { text?: string, mediaUrl?: string, ... } }
+{ handled: true, text: "..." }
 ```
 
 ## Test scenarios
