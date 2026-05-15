@@ -28,6 +28,11 @@
         "type": "string",
         "default": "",
         "description": "Optional Whisper prompt (e.g. language hints)"
+      },
+      "apiKey": {
+        "type": "string",
+        "default": "",
+        "description": "OpenRouter API key (falls back to OPENROUTER_API_KEY env var)"
       }
     }
   },

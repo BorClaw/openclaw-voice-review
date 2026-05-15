@@ -1,43 +1,68 @@
 // src/index.ts
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 /**
  * Voice Review plugin for OpenClaw.
  *
- * Intercepts inbound voice messages via the inbound_claim hook, transcribes
- * (and optionally translates to English) them using OpenRouter's Whisper
- * endpoint, then presents the text for user approval before the LLM sees it.
- *
- * Returns { handled: true, reply: { text: "..." } } to claim the message
- * and prevent the built-in transcript from reaching the LLM.
+ * Uses before_dispatch to intercept audio messages, transcribes via OpenRouter,
+ * and shows a preview for user approval before LLM processing.
  */
 
 export interface VoiceReviewConfig {
-  /** "transcribe" = original language; "translate_to_en" = transcribe + translate to English */
   mode?: "transcribe" | "translate_to_en";
-  /** OpenRouter Whisper model ID */
   model?: string;
-  /** Hint text shown below the transcription preview */
   confirmMessage?: string;
-  /** Optional Whisper context prompt (e.g. language hints) */
   promptText?: string;
 }
 
-/**
- * Detect audio format from file extension.
- */
+const MEDIA_INBOUND_DIR = join(
+  process.env.HOME ?? "/tmp",
+  ".openclaw/media/inbound"
+);
+
 function detectFormat(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "ogg";
   const map: Record<string, string> = {
-    ogg: "ogg",
-    mp3: "mp3",
-    m4a: "mp4",
-    wav: "wav",
-    webm: "webm",
-    flac: "flac",
-    opus: "ogg",
+    ogg: "ogg", mp3: "mp3", m4a: "mp4", wav: "wav",
+    webm: "webm", flac: "flac", opus: "ogg",
   };
   return map[ext] ?? ext;
+}
+
+/**
+ * Find the most recent audio file in the inbound media directory
+ * that was modified within `maxAgeMs` of the reference time.
+ */
+async function findRecentAudioFile(
+  refTime: number,
+  maxAgeMs = 15000
+): Promise<string | undefined> {
+  try {
+    const entries = await readdir(MEDIA_INBOUND_DIR);
+    let best: { path: string; age: number } | undefined;
+
+    for (const entry of entries) {
+      if (!entry.includes(".") || entry.startsWith(".")) continue;
+      const ext = entry.split(".").pop()?.toLowerCase();
+      if (!ext || !["ogg", "mp3", "m4a", "wav", "webm", "flac", "opus"].includes(ext)) continue;
+
+      const fullPath = join(MEDIA_INBOUND_DIR, entry);
+      const s = await stat(fullPath);
+      const age = refTime - s.mtimeMs;
+
+      if (age >= 0 && age < maxAgeMs) {
+        if (!best || age < best.age) {
+          best = { path: fullPath, age };
+        }
+      }
+    }
+
+    return best?.path;
+  } catch {
+    return undefined;
+  }
 }
 
 export default definePluginEntry({
@@ -52,44 +77,46 @@ export default definePluginEntry({
     const model = cfg.model ?? "openai/whisper-large-v3-turbo";
     const confirmHint = cfg.confirmMessage ?? "Reply ok to submit, or edit and send.";
 
-    api.on("inbound_claim", async (event, _ctx) => {
-      // Only intercept audio messages.
-      // event.metadata.mediaType is set when inbound has audio media.
-      const mediaType = event.metadata?.mediaType as string | undefined;
-      const mediaPath = event.metadata?.mediaPath as string | undefined;
-
-      if (!mediaType?.startsWith("audio") && !mediaPath) return;
+    api.on("before_dispatch", async (event, _ctx) => {
+      // Only intercept audio messages (content is <media:audio> placeholder)
+      if (!event.content?.includes("media:audio")) return;
 
       try {
-        // 1. Read and base64-encode the audio file
-        const fs = await import("node:fs/promises");
-        const audioBuffer = await fs.readFile(mediaPath!);
-        const audioB64 = audioBuffer.toString("base64");
-        const format = detectFormat(mediaPath!);
+        const now = Date.now();
+        api.logger.info(`[voice-review] before_dispatch: audio detected, looking for recent file...`);
 
-        // 2. Call OpenRouter transcriptions API
-        const apiKey = process.env.OPENROUTER_API_KEY;
+        // Find the audio file that was just received
+        const mediaPath = await findRecentAudioFile(now);
+        if (!mediaPath) {
+          api.logger.warn("[voice-review] no recent audio file found, falling through");
+          return;
+        }
+
+        api.logger.info(`[voice-review] found audio: ${mediaPath}`);
+
+        // Read and base64-encode
+        const fs = await import("node:fs/promises");
+        const audioBuffer = await fs.readFile(mediaPath);
+        const audioB64 = audioBuffer.toString("base64");
+        const format = detectFormat(mediaPath);
+
+        // Call OpenRouter transcriptions API
+        const apiKey = process.env.OPENROUTER_API_KEY || (api.pluginConfig as any)?.apiKey;
         if (!apiKey) {
           api.logger.error(
-            "OPENROUTER_API_KEY not set — voice-review cannot process audio, falling through to default handler"
+            "[voice-review] OPENROUTER_API_KEY not set (env or plugin config) — falling through"
           );
-          return; // fall through to default audio handling
+          return;
         }
 
         const payload: Record<string, unknown> = {
           model,
-          input_audio: {
-            data: audioB64,
-            format,
-          },
+          input_audio: { data: audioB64, format },
         };
 
-        // For translate mode, Whisper translates directly to English
         if (mode === "translate_to_en") {
           payload.task = "translate";
         }
-
-        // Optional whisper prompt for context/language hints
         if (cfg.promptText) {
           payload.prompt = cfg.promptText;
         }
@@ -109,35 +136,28 @@ export default definePluginEntry({
         if (!response.ok) {
           const errorText = await response.text();
           api.logger.error(
-            `OpenRouter transcription failed: ${response.status} ${errorText}`
+            `[voice-review] OpenRouter failed: ${response.status} ${errorText}`
           );
-          return; // fall through to default handling
+          return;
         }
 
         const result = (await response.json()) as { text?: string };
         const text = result.text?.trim();
 
         if (!text) {
-          api.logger.warn(
-            "OpenRouter returned empty transcription — falling through to default handler"
-          );
+          api.logger.warn("[voice-review] empty transcription — falling through");
           return;
         }
 
-        // 3. Format the preview message
-        const modeLabel =
-          mode === "translate_to_en" ? "Translation" : "Transcription";
+        // Format preview and claim the message
+        const modeLabel = mode === "translate_to_en" ? "Translation" : "Transcription";
         const preview = `*${modeLabel}:*\n\`\`\`\n${text}\n\`\`\`\n\n_${confirmHint}_`;
 
-        // 4. Claim the message: send preview, suppress LLM processing
-        // This prevents the built-in transcript from reaching the agent
-        return {
-          handled: true,
-          reply: { text: preview },
-        };
+        api.logger.info(`[voice-review] transcription success, claiming message`);
+        return { handled: true, text: preview };
       } catch (err) {
-        api.logger.error(`voice-review plugin error: ${err}`);
-        return; // fall through to default handling on any error
+        api.logger.error(`[voice-review] error: ${err}`);
+        return;
       }
     });
   },
