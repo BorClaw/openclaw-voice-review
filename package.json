@@ -4,7 +4,9 @@
   "type": "module",
   "description": "OpenClaw plugin: intercept voice messages, transcribe/translate via OpenRouter Whisper, show preview before LLM processing",
   "openclaw": {
-    "extensions": ["./src/index.ts"],
+    "extensions": [
+      "./dist/index.js"
+    ],
     "compat": {
       "pluginApi": ">=2026.3.24-beta.2",
       "minGatewayVersion": "2026.3.24-beta.2"
@@ -19,6 +21,7 @@
     "dev": "tsc --watch"
   },
   "devDependencies": {
+    "@types/node": "^25.8.0",
     "typescript": "^5.7.0"
   }
 }

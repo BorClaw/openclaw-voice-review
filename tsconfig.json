@@ -8,7 +8,10 @@
     "skipLibCheck": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "declaration": true
+    "declaration": true,
+    "paths": {
+      "openclaw/plugin-sdk/*": ["/opt/homebrew/lib/node_modules/openclaw/dist/plugin-sdk/*"]
+    }
   },
   "include": ["src"]
 }
