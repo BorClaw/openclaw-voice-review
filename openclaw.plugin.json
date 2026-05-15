@@ -3,6 +3,7 @@
   "name": "Voice Review",
   "description": "Intercept voice messages, transcribe/translate via OpenRouter Whisper, show preview for user approval before LLM processing",
   "version": "1.0.0",
+  "entry": "./dist/index.js",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
