@@ -1,0 +1,52 @@
+{
+  "id": "voice-review",
+  "name": "Voice Review",
+  "description": "Intercept voice messages, transcribe/translate via OpenRouter Whisper, show preview for user approval before LLM processing",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": ["transcribe", "translate_to_en"],
+        "default": "translate_to_en",
+        "description": "transcribe = return text in original language; translate_to_en = transcribe and translate to English"
+      },
+      "model": {
+        "type": "string",
+        "default": "openai/whisper-large-v3-turbo",
+        "description": "OpenRouter model for audio transcription"
+      },
+      "confirmMessage": {
+        "type": "string",
+        "default": "Reply ok to submit, or edit and send.",
+        "description": "Hint shown below the transcription preview"
+      },
+      "promptText": {
+        "type": "string",
+        "default": "",
+        "description": "Optional Whisper prompt (e.g. language hints)"
+      }
+    }
+  },
+  "uiHints": {
+    "mode": {
+      "label": "Mode",
+      "help": "transcribe keeps original language, translate_to_en transcribes and translates to English"
+    },
+    "model": {
+      "label": "Whisper model",
+      "help": "OpenRouter Whisper model ID",
+      "placeholder": "openai/whisper-large-v3-turbo"
+    },
+    "confirmMessage": {
+      "label": "Confirm hint",
+      "help": "Text shown below the transcription preview"
+    },
+    "promptText": {
+      "label": "Whisper prompt",
+      "help": "Optional language/context hint for the transcription model"
+    }
+  }
+}
