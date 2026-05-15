@@ -3,6 +3,23 @@
   "version": "1.0.0",
   "type": "module",
   "description": "OpenClaw plugin: intercept voice messages, transcribe/translate via OpenRouter Whisper, show preview before LLM processing",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BorClaw/openclaw-voice-review.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BorClaw/openclaw-voice-review/issues"
+  },
+  "homepage": "https://github.com/BorClaw/openclaw-voice-review#readme",
+  "files": [
+    "README.md",
+    "TEST_PLAN.md",
+    "openclaw.plugin.json",
+    "dist",
+    "src",
+    "tsconfig.json"
+  ],
   "openclaw": {
     "extensions": [
       "./dist/index.js"
@@ -18,10 +35,15 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^25.8.0",
+    "openclaw": "2026.5.12",
     "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
   }
 }
